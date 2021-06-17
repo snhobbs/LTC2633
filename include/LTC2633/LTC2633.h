@@ -34,6 +34,41 @@ enum class Command : uint8_t {
   kNoOp = 0xf0
 };
 
+static const double constexpr kVoltageReferenceNominal = 2.5;
+static const uint32_t kDataBits = 16;
+enum class Channel : uint8_t { kCHA = 0x0, kCHB = 0x1, kAll = 0xf };
+static const constexpr uint8_t kSlaveAddressGlobal = 0b1110011;
+static const constexpr uint8_t kSlaveAddressBase = 0b0010000;
+
+/*
+ * Upper bits followed by lower bits,
+ * */
+template<typename Device_t, size_t kBits>
+inline void SendCommand(Device_t* p_device, CA0Mode ca0, Command cmd, Channel channel, uint16_t data) {
+  const uint32_t slave_address = static_cast<uint8_t>(kSlaveAddressBase +
+                                           static_cast<uint8_t>(ca0));
+  const uint16_t shifted_data = data << (kDataBits - kBits);
+  const uint8_t command_byte =
+      static_cast<uint8_t>(cmd) | static_cast<uint8_t>(channel);
+  p_device->InsertOperation(
+      {I2C::OperationType::kWrite, I2C::MakeSlaveWriteAddress(slave_address)});
+  p_device->InsertOperation({I2C::OperationType::kStart});
+  p_device->InsertOperation({I2C::OperationType::kWrite, command_byte});
+  p_device->InsertOperation({I2C::OperationType::kContinue});
+  p_device->InsertOperation({I2C::OperationType::kWrite,
+                   static_cast<uint8_t>(0xff & (shifted_data >> 8))});
+  p_device->InsertOperation({I2C::OperationType::kContinue});
+  p_device->InsertOperation(
+      {I2C::OperationType::kWrite, static_cast<uint8_t>(0xff & shifted_data)});
+  p_device->InsertOperation({I2C::OperationType::kContinue});
+}
+
+template<typename Device_t, size_t kBits>
+inline void Write(Device_t* p_device, Channel channel, uint16_t value) {
+  SendCommand<Device_t, kBits>(p_device, Command::kWriteToAndUpdateDacRegisterN, channel, value);
+}
+
+#if 0
 template<typename AnalogOutput_t>
 class I2C_AnalogOutput final : public AnalogOutput_t {
  private:
@@ -62,38 +97,6 @@ class I2C_AnalogOutput final : public AnalogOutput_t {
       : AnalogOutput_t{bits} {}
   virtual ~I2C_AnalogOutput(void) {}
 };
-
-static const double constexpr kVoltageReferenceNominal = 2.5;
-static const uint32_t kDataBits = 16;
-enum class Channel : uint8_t { kCHA = 0x0, kCHB = 0x1, kAll = 0xf };
-static const constexpr uint8_t kSlaveAddressGlobal = 0b1110011;
-static const constexpr uint8_t kSlaveAddressBase = 0b0010000;
-
-/*
- * Upper bits followed by lower bits,
- * */
-template<typename Device_t>
-inline void SendCommand(Device_t* p_device, Command cmd, Channel channel, uint16_t data) {
-  const uint16_t shifted_data = data << (kDataBits - kBits);
-  const uint8_t command_byte =
-      static_cast<uint8_t>(cmd) | static_cast<uint8_t>(channel);
-  p_device->InsertOperation(
-      {I2COperationType::kWrite, MakeI2CSlaveWriteAddress(kSlaveAddress)});
-  p_device->InsertOperation({I2COperationType::kStart});
-  p_device->InsertOperation({I2COperationType::kWrite, command_byte});
-  p_device->InsertOperation({I2COperationType::kContinue});
-  p_device->InsertOperation({I2COperationType::kWrite,
-                   static_cast<uint8_t>(0xff & (shifted_data >> 8))});
-  p_device->InsertOperation({I2COperationType::kContinue});
-  p_device->InsertOperation(
-      {I2COperationType::kWrite, static_cast<uint8_t>(0xff & shifted_data)});
-  p_device->InsertOperation({I2COperationType::kContinue});
-}
-
-template<typename Device_t>
-inline void Write(Device_t* p_device, Channel channel, uint16_t value) {
-  SendCommand(p_device, Command::kWriteToAndUpdateDacRegisterN, channel, value);
-}
 
 
 template<size_t kBits>
@@ -190,5 +193,5 @@ class Driver final : public I2CDeviceBase {
                                            static_cast<uint8_t>(ca0))} {}
   virtual ~Driver(void) {}
 };
-
+#endif
 }  //  namespace LTC2633
